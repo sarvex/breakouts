@@ -43,10 +43,7 @@ if sys.version_info < (2,6):
     sys.exit(1)
 
 def removeDupes(seq):
-    # Not order preserving
-    keys = {}
-    for e in seq:
-        keys[e.rstrip()] = 1
+    keys = {e.rstrip(): 1 for e in seq}
     return keys.keys()
     
 def makeProjectPaths(add):
@@ -55,10 +52,9 @@ def makeProjectPaths(add):
         lines.append(add)
     newlines = filter(lambda x: exists(join(basedir,x.rstrip())) and len(x.rstrip()),lines)
     newlines = removeDupes(newlines)
-    
-    f = open(projects_path,'w')
-    f.write('\n'.join(newlines))
-    f.close()
+
+    with open(projects_path,'w') as f:
+        f.write('\n'.join(newlines))
 
 def rephook(a,b,c):
     sys.stdout.write("\r%2d%%" % ((100*a*b)/c) )
@@ -77,40 +73,40 @@ def checkDependencies():
     if retcode!=0:
         logging.error('Lime requires git. Get it from http://git-scm.com/download')
         sys.exit(1) 
-    
-    
+
+
     #Closure Library
     if not (os.path.exists(closure_dir) and  os.path.exists(closure_deps_file)):
-        print ('Closure Library not found. Downloading to %s' % closure_dir)
+        print(f'Closure Library not found. Downloading to {closure_dir}')
         print ('Please wait...')
-        
+
         retcode = subprocess.Popen(subprocess.list2cmdline(["git","svn","clone","-r","HEAD","http://closure-library.googlecode.com/svn/trunk/",closure_dir]),shell=True).wait()
-        
-        if(retcode!=0):
+
+        if (retcode!=0):
             #try pure svn
             print ('Installed Git does not support Subversion clones, trying to checkout with Subversion.')
             retcode = subprocess.Popen(subprocess.list2cmdline(["svn","checkout","http://closure-library.googlecode.com/svn/trunk/",closure_dir]),shell=True).wait()
-            
-            if(retcode!=0):
-                logging.error('Error while downloading Closure Library. Discontinuing.')
-                sys.exit(1)
-    
-    
+
+        if(retcode!=0):
+            logging.error('Error while downloading Closure Library. Discontinuing.')
+            sys.exit(1)
+
+
     #Box2D
     if not os.path.exists(box2d_dir):
-        print ('Box2DJS not found. Downloading to %s' % box2d_dir)
+        print(f'Box2DJS not found. Downloading to {box2d_dir}')
         print ('Please wait...')
-        
+
         retcode = subprocess.Popen(subprocess.list2cmdline(["git","clone","http://github.com/thinkpixellab/pl.git",box2d_dir]),shell=True).wait()
-        
+
         if(retcode!=0):
             logging.error('Error while downloading Box2D. Discontinuing.')
             sys.exit(1)
-    
+
     #External tools dir
     if not os.path.exists(extdir):
         os.mkdir(extdir)
-    
+
     #Closure compiler
     if not os.path.exists(compiler_path):
         zip_path = os.path.join(extdir,'compiler.zip')
@@ -122,8 +118,8 @@ def checkDependencies():
         zippedFile.close()
         print ('Cleanup')
         os.unlink(zip_path)
-    
-    
+
+
     #Closure Templates
     if not os.path.exists(soy_path):
         zip_path = os.path.join(extdir,'soy.zip')
@@ -136,10 +132,10 @@ def checkDependencies():
         zippedFile.close()
         print ('Cleanup')
         os.unlink(zip_path)
-    
+
     if not os.path.exists(projects_path):
         open(projects_path,'w').close()
-    
+
     makeProjectPaths('')
     
     
@@ -149,37 +145,42 @@ def update():
     reldir = os.path.relpath(curdir,basedir)
     if reldir!='.':
         makeProjectPaths(reldir)
-    
+
     print ('Updating Closure deps file')
-    
+
     paths = open(projects_path,'r').readlines()
     paths.append('lime\n')
     paths.append('box2d\n')
-    
-    opt = ' '.join(map(lambda x: '--root_with_prefix="'+quoteSpace(os.path.join(basedir,x.rstrip()))+'/ ../../../'+x.rstrip()+'/"',paths))
+
+    opt = ' '.join(
+        map(
+            lambda x: f'--root_with_prefix="{quoteSpace(os.path.join(basedir, x.rstrip()))}/ ../../../{x.rstrip()}/"',
+            paths,
+        )
+    )
 
     call = escapeSpace(os.path.join(closure_dir,'closure/bin/build/depswriter.py'))+' --root_with_prefix="'+\
         quoteSpace(closure_dir)+'/ ../../" '+opt+' --output_file="'+closure_deps_file+'"'
-        
+
     print (call)
-    
+
     subprocess.call(call,shell=True)
     
 
 def create(name):
     
     path = os.path.join(curdir,name)
-    
+
     if exists(path):
         logging.error('Directory already exists: %s',path)
         sys.exit(1) 
-    
+
     name = os.path.basename(path)
-    
+
     proj = os.path.relpath(path,basedir)
-    
+
     shutil.copytree(os.path.join(basedir,'lime/templates/default'),path)
-    
+
     for root, dirs, files in os.walk(path):
         for fname in files:
             newname = fname.replace('__name__',name)
@@ -188,25 +189,25 @@ def create(name):
             for line in fileinput.FileInput(os.path.join(path,newname),inplace=1):
                 line = line.replace('{name}',name)
                 print(line.rstrip())
-            
-    print ('Created %s' % path)
-    
-    
+
+    print(f'Created {path}')
+        
+
     if proj!='.':
         makeProjectPaths(os.path.relpath(path,basedir))
-    
+
     update()
 
 def makeSoyJSFile(path,stringbuilder):
 
     if path[-4:]=='.soy':
-        call = "java -jar "+soy_path+" --cssHandlingScheme goog --shouldProvideRequireSoyNamespaces --outputPathFormat "+path+".js "
-    
+        call = f"java -jar {soy_path} --cssHandlingScheme goog --shouldProvideRequireSoyNamespaces --outputPathFormat {path}.js "
+
     if not stringbuilder:
         call+=  "--codeStyle concat "
-            
+
     call += path;
-    
+
     print (call)
     subprocess.call(call,shell=True)
     
@@ -216,54 +217,51 @@ def genSoy(path):
     if not os.path.exists(path):
         logging.error('No such directory %s',path)
         exit(1)
-        
+
     if os.path.isfile(path):
         
         mtype = mimetypes.guess_type(path)[0]
         fname = split(path)[1]
-        
+
         if path[-4:]=='.soy':
             makeSoyJSFile(path,True)
-            
+
         elif path[-5:]=='.json':
-            infile= open(path,'r')
-            outfile = open(path+'.js','w')
-            outfile.write('goog.provide(\'lime.ASSETS.'+fname+'\');\ngoog.require(\'soy\');\n\n'+ \
-                'lime.ASSETS.'+fname+'.data = function(opt_data) { \nreturn '+infile.read()+';\n}')
-            infile.close()
+            with open(path,'r') as infile:
+                outfile = open(f'{path}.js', 'w')
+                outfile.write('goog.provide(\'lime.ASSETS.'+fname+'\');\ngoog.require(\'soy\');\n\n'+ \
+                    'lime.ASSETS.'+fname+'.data = function(opt_data) { \nreturn '+infile.read()+';\n}')
             outfile.close()
 
         elif mtype and ['image','audio','video'].count(mtype.split('/')[0]):
-            infile= open(path,'r')
-            outfile = open(path+'.soy','w')
-            outfile.write('{namespace lime.ASSETS.'+fname+'}\n\n/**\n * Generated with "bin/lime.py gensoy filepath"\n */\n{template .data}\n{literal}')
-            outfile.write('data:'+mtype+';base64,')
-            outfile.write(base64.b64encode(infile.read()))
-            outfile.write('{/literal}\n{/template}\n')
-            infile.close()
+            with open(path,'r') as infile:
+                outfile = open(f'{path}.soy', 'w')
+                outfile.write('{namespace lime.ASSETS.'+fname+'}\n\n/**\n * Generated with "bin/lime.py gensoy filepath"\n */\n{template .data}\n{literal}')
+                outfile.write(f'data:{mtype};base64,')
+                outfile.write(base64.b64encode(infile.read()))
+                outfile.write('{/literal}\n{/template}\n')
             outfile.close()
-            makeSoyJSFile(path+'.soy',False)
-            
-        else :
-            outfile = open(path+'.soy','w')
-            outfile.write('{namespace lime.ASSETS.'+fname+'}\n\n/**\n * Generated with "bin/lime.py gensoy filepath"\n */\n{template .data}\n')
-            for line in fileinput.FileInput(path):
-                line = line.replace('{','[[LB_POS]]')
-                line = line.replace('}','[[RB_POS]]')
-                line = line.replace('[[LB_POS]]','{lb}')
-                line = line.replace('[[RB_POS]]','{rb}')
-                outfile.write(line);
-            outfile.write('\n{/template}\n')
-            outfile.close()
-            makeSoyJSFile(path+'.soy',False)
-        
+            makeSoyJSFile(f'{path}.soy', False)
+
+        else:
+            with open(f'{path}.soy', 'w') as outfile:
+                outfile.write('{namespace lime.ASSETS.'+fname+'}\n\n/**\n * Generated with "bin/lime.py gensoy filepath"\n */\n{template .data}\n')
+                for line in fileinput.FileInput(path):
+                    line = line.replace('{','[[LB_POS]]')
+                    line = line.replace('}','[[RB_POS]]')
+                    line = line.replace('[[LB_POS]]','{lb}')
+                    line = line.replace('[[RB_POS]]','{rb}')
+                    outfile.write(line);
+                outfile.write('\n{/template}\n')
+            makeSoyJSFile(f'{path}.soy', False)
+
     else:    
         for root,dirs,files in os.walk(path):
             for fname in files:
                 if fname[-4:]=='.soy':
                     soypath = os.path.join(root,fname)
                     makeSoyJSFile(soypath,False)
-       
+
     update()
              
 
@@ -273,42 +271,47 @@ def build(name,options):
     dir_list.append('lime')
     dir_list.append('box2d')
     dir_list.append('closure')
-    
+
     #dir_list = filter(lambda x: os.path.isdir(os.path.join(basedir,x)) and ['.git','bin','docs'].count(x)==0 ,os.listdir(basedir))
 
-    opt = ' '.join(map(lambda x: '--root="'+os.path.join(basedir,x.rstrip())+'/"',dir_list))
-    
+    opt = ' '.join(
+        map(
+            lambda x: f'--root="{os.path.join(basedir, x.rstrip())}/"',
+            dir_list,
+        )
+    )
+
     call = escapeSpace(os.path.join(closure_dir,'closure/bin/build/closurebuilder.py'))+' '+opt+' --namespace="'+name+'" '+\
         '-o compiled -c '+compiler_path;
-    
-    
+
+
     if options.advanced:
         call+=" -f --compilation_level=ADVANCED_OPTIMIZATIONS"
-        
+
     if options.map_file:
-        call+=" -f --formatting=PRETTY_PRINT -f --create_source_map="+options.map_file
+        call += f" -f --formatting=PRETTY_PRINT -f --create_source_map={options.map_file}"
     else:
         call+=" -f --define='goog.DEBUG=false'"
-        
+
     outname = options.output    
-        
+
     if options.output:
         if options.output[-3:] == '.js':
             outname = options.output[:-3]
-        call+=' --output_file="'+outname+'.js"'
+        call += f' --output_file="{outname}.js"'
         if not exists(os.path.dirname(outname)):
             os.makedirs(os.path.dirname(outname))
-        
-    
+
+
     subprocess.call(call,shell=True);
-    
+
     if options.output and options.preload:
         name = os.path.basename(outname)
         target = os.path.dirname(outname)
         source = os.path.join(basedir,'lime/templates/preloader')
 
         for root, dirs, files in os.walk(source):
-            
+
             for fname in files:
                 from_ = join(root, fname)           
                 to_ = from_.replace(source, target, 1)
@@ -318,7 +321,7 @@ def build(name,options):
                     os.makedirs(to_directory)
                 if not exists(to_):
                     copyfile(from_, to_)
-        
+
         for root, dirs, files in os.walk(target):
 
             for fname in files:         
@@ -326,8 +329,8 @@ def build(name,options):
                     for line in fileinput.FileInput(os.path.join(target,fname),inplace=1):
                         line = line.replace('{name}',name)
                         line = line.replace('{callback}',options.preload)
-                    
-                        if fname == name+'.manifest':
+
+                        if fname == f'{name}.manifest':
                             line = re.sub(r'# Updated on:.*','# Updated on: '+datetime.now().strftime("%Y-%m-%d %H:%M:%S"),line)
                         print(line.rstrip())
         
@@ -345,36 +348,38 @@ Commands:
     gensoy [path]   Convert all *.soy files under path to *.soy.js files
     build [name]    Compile project to single Javascript file"""
     parser = optparse.OptionParser(usage)
-    
+
     parser.add_option("-a", "--advanced", dest="advanced", action="store_true",
                       help="Build uses ADVANCED_OPTIMIZATIONS mode (encouraged)")
     parser.add_option("-o", "--output", dest="output", action="store", type="string",
                       help="Output file for build result")
-    
+
     parser.add_option("-m", "--map", dest="map_file", action="store",
                       help="Build result sourcemap for debugging. Also turns on pretty print.")
-                      
+
     parser.add_option("-p", "--preload", dest="preload", action="store", type="string",
                         help="Generate preloader code with given callback as start point.")
-    
+
     (options, args) = parser.parse_args()
-    if not (len(args) == 2 or (len(args)==1 and ['init','update'].count(args[0])==1 )) :
+    if len(args) != 2 and (
+        len(args) != 1 or ['init', 'update'].count(args[0]) != 1
+    ):
         parser.error('incorrect number of arguments')
-    
+
     checkDependencies()
-    
-    if args[0]=='init' or args[0]=='update':
+
+    if args[0] in ['init', 'update']:
         update()
-    
+
     elif args[0]=='create':
         create(args[1])
-        
+
     elif args[0]=='gensoy':
         genSoy(args[1])
-        
+
     elif args[0]=='build':
         build(args[1],options)    
-        
+
     else:
         logging.error('No such command: %s',args[0])
         exit(1)
